@@ -1,0 +1,359 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Maintenance</title>
+
+<style>
+body {
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:white;
+  color:black;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+}
+
+header {
+  padding:20px;
+  display:flex;
+  align-items:center;
+  gap:15px;
+}
+
+#grid {
+  flex:1;
+  display:grid;
+  grid-template-columns:repeat(10,100px);
+  gap:10px;
+  padding:20px;
+  overflow:auto;
+}
+
+button.pad {
+  width:100px;
+  height:100px;
+  border:0;
+  background:none;
+  cursor:pointer;
+  transition:transform 0.15s ease, box-shadow 0.15s ease;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+button.pad:hover {
+  transform:scale(1.12);
+  box-shadow:0 0 15px rgba(0,0,0,0.3);
+}
+
+@keyframes pulse {
+  0% { transform:scale(1); filter:brightness(1); }
+  40% { transform:scale(1.35); filter:brightness(1.4); }
+  100% { transform:scale(1); filter:brightness(1); }
+}
+
+.activePulse {
+  animation:pulse 0.25s ease-out;
+}
+
+.bottomBtn {
+  height:60px;
+  font-size:20px;
+  font-weight:bold;
+  border:0;
+  background:black;
+  color:white;
+  cursor:pointer;
+  transition:0.2s;
+}
+
+.bottomBtn.active {
+  background:#ff8a00;
+  color:black;
+  box-shadow:0 0 15px #ff8a00;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h2>Sorry! We are down for maintenance.</h2>
+  <p>We'll be back soon.</p>
+</header>
+
+<div id="grid"></div>
+
+<!-- FIRST CONTROL ROW -->
+<button id="releaseBtn" class="bottomBtn">RELEASE: OFF</button>
+<button id="repeatBtn" class="bottomBtn">REPEAT: OFF</button>
+<button id="fmBtn" class="bottomBtn">FM: OFF</button>
+
+<!-- SECOND CONTROL ROW -->
+<button id="carrierOctBtn" class="bottomBtn">CARRIER OCT: 0</button>
+<button id="modOctBtn" class="bottomBtn">MOD OCT: 0</button>
+
+<script>
+// ---------------------------
+// AUDIO ENGINE WITH RELEASE + FM + OCTAVES
+// ---------------------------
+let audio = null;
+let releaseMode = false;
+let repeatMode = false;
+let fmMode = false;
+
+let carrierOct = 0; // now cycles -2 to +2
+let modOct = 0;     // now cycles -2 to +2
+
+function play(freq, modFreq) {
+  if (!audio) {
+    audio = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+
+  // Apply carrier octave shift
+  const carrierFreq = freq * Math.pow(2, carrierOct);
+
+  osc.type = "square";
+  osc.frequency.value = carrierFreq;
+
+  gain.gain.value = 0.2;
+
+  // FM MODE
+  if (fmMode) {
+    const mod = audio.createOscillator();
+    const modGain = audio.createGain();
+
+    const modulatedFreq = modFreq * Math.pow(2, modOct);
+
+    mod.frequency.value = modulatedFreq;
+    modGain.gain.value = 50;
+
+    mod.connect(modGain);
+    modGain.connect(osc.frequency);
+
+    mod.start();
+    mod.stop(audio.currentTime + 1.25);
+  }
+
+  osc.connect(gain);
+  gain.connect(audio.destination);
+
+  osc.start();
+
+  if (!releaseMode) {
+    osc.stop(audio.currentTime + 0.15);
+  } else {
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 1.2);
+    osc.stop(audio.currentTime + 1.25);
+  }
+}
+
+// ---------------------------
+// TRANSPOSITION LOGIC
+// ---------------------------
+function transpose(freq, semitones) {
+  return freq * Math.pow(2, semitones / 12);
+}
+
+const base = [220,247,262,294,330,349,392,440,494,523];
+
+let freqs = [];
+let modFreqs = [];
+
+// Row 1
+for (let i = 0; i < 10; i++) freqs.push(base[i]);
+for (let i = 0; i < 10; i++) modFreqs.push(base[2]);
+
+// Row 2 (+1 semitone)
+for (let i = 0; i < 10; i++) freqs.push(transpose(base[i], 1));
+for (let i = 0; i < 10; i++) modFreqs.push(transpose(base[2], 1));
+
+// Row 3 (+2 semitones)
+for (let i = 0; i < 10; i++) freqs.push(transpose(base[i], 2));
+for (let i = 0; i < 10; i++) modFreqs.push(transpose(base[2], 2));
+
+// ---------------------------
+// REASON-STYLE ICONS
+// ---------------------------
+const idleSVG = `
+<svg width="80" height="80" viewBox="0 0 100 100">
+  <polygon points="50,5 90,30 90,70 50,95 10,70 10,30"
+           fill="none" stroke="black" stroke-width="8" stroke-linejoin="round"/>
+  <polygon points="50,20 78,36 50,52 22,36" fill="#ff8a00"/>
+  <polygon points="22,36 50,52 50,84 22,68" fill="#d66a00"/>
+  <polygon points="78,36 50,52 50,84 78,68" fill="#b85500"/>
+</svg>`;
+
+const activeSVG = `
+<svg width="80" height="80" viewBox="0 0 100 100">
+  <polygon points="50,5 90,30 90,70 50,95 10,70 10,30"
+           fill="none" stroke="#ff8a00" stroke-width="10"
+           stroke-linejoin="round"
+           filter="drop-shadow(0 0 8px #ff8a00)"/>
+  <polygon points="50,20 78,36 50,52 22,36" fill="#ffb347"/>
+  <polygon points="22,36 50,52 50,84 22,68" fill="#ff8a00"/>
+  <polygon points="78,36 50,52 50,84 78,68" fill="#e06a00"/>
+</svg>`;
+
+// ---------------------------
+// DRAG + REPEAT LOGIC
+// ---------------------------
+let mouseDown = false;
+document.body.onmousedown = () => mouseDown = true;
+document.body.onmouseup   = () => mouseDown = false;
+
+// ---------------------------
+// BUILD GRID (30 pads)
+// ---------------------------
+const grid = document.getElementById("grid");
+const TOTAL = 30;
+
+function trigger(btn, freq, modFreq) {
+  btn.innerHTML = activeSVG;
+  btn.classList.add("activePulse");
+  play(freq, modFreq);
+
+  setTimeout(() => {
+    btn.innerHTML = idleSVG;
+    btn.classList.remove("activePulse");
+  }, 200);
+}
+
+for (let i = 0; i < TOTAL; i++) {
+  const btn = document.createElement("button");
+  btn.className = "pad";
+  btn.innerHTML = idleSVG;
+
+  const freq = freqs[i];
+  const modFreq = modFreqs[i];
+
+  let repeatTimer = null;
+
+  btn.addEventListener("mousedown", () => {
+    trigger(btn, freq, modFreq);
+
+    if (repeatMode) {
+      repeatTimer = setInterval(() => trigger(btn, freq, modFreq), 140);
+    }
+  });
+
+  document.addEventListener("mouseup", () => {
+    clearInterval(repeatTimer);
+    repeatTimer = null;
+  });
+
+  btn.addEventListener("mouseenter", () => {
+    if (mouseDown) {
+      trigger(btn, freq, modFreq);
+
+      if (repeatMode) {
+        repeatTimer = setInterval(() => trigger(btn, freq, modFreq), 140);
+      }
+    }
+  });
+
+  btn.addEventListener("mouseleave", () => {
+    clearInterval(repeatTimer);
+    repeatTimer = null;
+  });
+
+  grid.appendChild(btn);
+}
+
+// ---------------------------
+// RELEASE BUTTON
+// ---------------------------
+const releaseBtn = document.getElementById("releaseBtn");
+
+releaseBtn.onclick = () => {
+  releaseMode = !releaseMode;
+
+  if (releaseMode) {
+    releaseBtn.classList.add("active");
+    releaseBtn.textContent = "RELEASE: ON";
+  } else {
+    releaseBtn.classList.remove("active");
+    releaseBtn.textContent = "RELEASE: OFF";
+  }
+};
+
+// ---------------------------
+// REPEAT BUTTON
+// ---------------------------
+const repeatBtn = document.getElementById("repeatBtn");
+
+repeatBtn.onclick = () => {
+  repeatMode = !repeatMode;
+
+  if (repeatMode) {
+    repeatBtn.classList.add("active");
+    repeatBtn.textContent = "REPEAT: ON";
+  } else {
+    repeatBtn.classList.remove("active");
+    repeatBtn.textContent = "REPEAT: OFF";
+  }
+};
+
+// ---------------------------
+// FM BUTTON
+// ---------------------------
+const fmBtn = document.getElementById("fmBtn");
+
+fmBtn.onclick = () => {
+  fmMode = !fmMode;
+
+  if (fmMode) {
+    fmBtn.classList.add("active");
+    fmBtn.textContent = "FM: ON";
+  } else {
+    fmBtn.classList.remove("active");
+    fmBtn.textContent = "FM: OFF";
+  }
+};
+
+// ---------------------------
+// CARRIER OCTAVE BUTTON
+// ---------------------------
+const carrierOctBtn = document.getElementById("carrierOctBtn");
+
+carrierOctBtn.onclick = () => {
+  carrierOct++;
+  if (carrierOct > 2) carrierOct = -2;
+
+  carrierOctBtn.textContent = "CARRIER OCT: " + carrierOct;
+
+  if (carrierOct !== 0) {
+    carrierOctBtn.classList.add("active");
+  } else {
+    carrierOctBtn.classList.remove("active");
+  }
+};
+
+// ---------------------------
+// MODULATOR OCTAVE BUTTON
+// ---------------------------
+const modOctBtn = document.getElementById("modOctBtn");
+
+modOctBtn.onclick = () => {
+  modOct++;
+  if (modOct > 2) modOct = -2;
+
+  modOctBtn.textContent = "MOD OCT: " + modOct;
+
+  if (modOct !== 0) {
+    modOctBtn.classList.add("active");
+  } else {
+    modOctBtn.classList.remove("active");
+  }
+};
+</script>
+
+</body>
+</html>
